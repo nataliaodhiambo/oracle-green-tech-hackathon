@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KilimoPesa USSD Simulator</title>
+<style>
+  :root {
+    --bg: #0f3d2e; --panel: #fff; --ink: #1d2b24; --muted: #5f6f66;
+    --screen: #c9d8b6; --screen-ink: #1b2a12; --body: #2b2f33; --key: #3d4247;
+    --green: #2f9e44; --red: #d9480f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--bg); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex; flex-wrap: wrap; gap: 24px; justify-content: center; align-items: flex-start;
+    padding: 24px 16px;
+  }
+  h1 { font-size: 1.2rem; margin: 0 0 4px; }
+  .panel { background: var(--panel); border-radius: 12px; padding: 16px; width: 100%; max-width: 340px; }
+  .panel p, .panel li { color: var(--muted); font-size: .9rem; line-height: 1.4; }
+  .panel ol { padding-left: 20px; margin: 8px 0 0; }
+  label { font-size: .85rem; font-weight: 600; display: block; margin: 12px 0 4px; }
+  select { width: 100%; padding: 8px; font-size: .9rem; }
+
+  .phone {
+    width: 260px; background: var(--body); border-radius: 36px; padding: 28px 18px 22px;
+    box-shadow: 0 12px 30px rgba(0,0,0,.4);
+  }
+  .screen {
+    background: var(--screen); color: var(--screen-ink); border-radius: 6px; height: 230px;
+    padding: 10px; font-family: "Courier New", monospace; font-size: 13px; line-height: 1.35;
+    display: flex; flex-direction: column;
+  }
+  .screen .msg { flex: 1; white-space: pre-wrap; overflow-y: auto; }
+  .screen .input {
+    border-top: 1px solid rgba(0,0,0,.3); margin-top: 6px; padding-top: 4px; min-height: 20px;
+    font-weight: bold;
+  }
+  .keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 16px; }
+  .keys button {
+    background: var(--key); color: #fff; border: 0; border-radius: 12px; padding: 10px 0;
+    font-size: 1.05rem; cursor: pointer;
+  }
+  .keys button:active { filter: brightness(1.3); }
+  .keys .call { background: var(--green); }
+  .keys .end { background: var(--red); }
+  .keys .clear { font-size: .8rem; }
+
+  .sms { margin-top: 8px; }
+  .sms .bubble { background: #e7f5ec; border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; font-size: .85rem; color: var(--ink); }
+  .sms .bubble small { display: block; color: var(--muted); margin-top: 4px; }
+  .empty { font-size: .85rem; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <h1>KilimoPesa USSD</h1>
+  <p>Simulated feature phone talking to the same <code>/ussd</code> callback Africa's Talking calls.</p>
+  <label for="farmer">Phone (farmer)</label>
+  <select id="farmer"></select>
+  <p><strong>Demo script</strong></p>
+  <ol>
+    <li>Dial <code>*384*2026#</code> and press the green key</li>
+    <li><b>1</b> Check Green Score, then <b>0</b> back</li>
+    <li><b>2</b> See which actions raise it, then <b>0</b></li>
+    <li><b>3</b> See the interest discount, then <b>0</b></li>
+    <li><b>4</b> Get the SMS summary</li>
+  </ol>
+</div>
+
+<div class="phone">
+  <div class="screen">
+    <div class="msg" id="msg"></div>
+    <div class="input" id="input"></div>
+  </div>
+  <div class="keys" id="keys"></div>
+</div>
+
+<div class="panel">
+  <h1>SMS inbox</h1>
+  <div class="sms" id="sms"><p class="empty">No messages yet.</p></div>
+</div>
+
+<script>
+  const SERVICE_CODE = "*384*2026#";
+  const msgEl = document.getElementById("msg");
+  const inputEl = document.getElementById("input");
+  const farmerEl = document.getElementById("farmer");
+  const smsEl = document.getElementById("sms");
+
+  let typed = "";        // what is on the input line
+  let inSession = false; // waiting for a reply to a CON screen
+  let steps = [];        // inputs sent this session
+  let sessionId = "";
+
+  function idle() {
+    inSession = false; steps = []; typed = "";
+    msgEl.textContent = "KilimoPesa\n\nDial " + SERVICE_CODE + "\nthen press the green key.";
+    render();
+  }
+
+  function render() { inputEl.textContent = typed; }
+
+  async function post(text) {
+    const body = new URLSearchParams({
+      sessionId, serviceCode: SERVICE_CODE, phoneNumber: farmerEl.value, text,
+    });
+    msgEl.textContent = "USSD code running...";
+    const res = await fetch("ussd", { method: "POST", body });
+    const reply = await res.text();
+    inSession = reply.startsWith("CON ");
+    msgEl.textContent = reply.slice(4);
+    typed = ""; render();
+    if (!inSession) { steps = []; loadSms(); }
+  }
+
+  function send() {
+    if (!inSession) {
+      if (typed !== SERVICE_CODE) { msgEl.textContent = "Unknown code.\nDial " + SERVICE_CODE; typed = ""; render(); return; }
+      sessionId = "ATUid_" + Math.random().toString(36).slice(2);
+      steps = [];
+      post("");
+    } else if (typed) {
+      steps.push(typed);
+      post(steps.join("*"));
+    }
+  }
+
+  async function loadSms() {
+    const res = await fetch("sms?phone=" + encodeURIComponent(farmerEl.value));
+    const messages = await res.json();
+    smsEl.innerHTML = messages.length ? "" : '<p class="empty">No messages yet.</p>';
+    for (const m of messages.reverse()) {
+      const div = document.createElement("div");
+      div.className = "bubble";
+      div.textContent = m.message;
+      const time = document.createElement("small");
+      time.textContent = "From KILIMOPESA · " + m.sent_at;
+      div.appendChild(time);
+      smsEl.appendChild(div);
+    }
+  }
+
+  const KEYS = ["1","2","3","4","5","6","7","8","9","*","0","#"];
+  const keysEl = document.getElementById("keys");
+  function addKey(label, cls, onClick) {
+    const b = document.createElement("button");
+    b.textContent = label; b.className = cls || ""; b.onclick = onClick;
+    keysEl.appendChild(b);
+  }
+  addKey("📞", "call", send);
+  addKey("⌫", "clear", () => { typed = typed.slice(0, -1); render(); });
+  addKey("✕", "end", idle);
+  KEYS.forEach(k => addKey(k, "", () => { typed += k; render(); }));
+
+  document.addEventListener("keydown", e => {
+    if (e.target === farmerEl) return;
+    if (KEYS.includes(e.key)) { typed += e.key; render(); }
+    else if (e.key === "Enter") send();
+    else if (e.key === "Backspace") { typed = typed.slice(0, -1); render(); }
+    else if (e.key === "Escape") idle();
+  });
+
+  farmerEl.onchange = () => { idle(); loadSms(); };
+
+  fetch("farmers").then(r => r.json()).then(list => {
+    for (const f of list) {
+      const o = document.createElement("option");
+      o.value = f.phone;
+      o.textContent = `${f.phone} · ${f.farmer_name} (${f.plot_id}, ${f.crs_score})`;
+      farmerEl.appendChild(o);
+    }
+    const unknown = document.createElement("option");
+    unknown.value = "+254799999999";
+    unknown.textContent = "+254799999999 · Unregistered number";
+    farmerEl.appendChild(unknown);
+    farmerEl.value = "+254711000003"; // Wanjiru, the demo plot
+    idle(); loadSms();
+  });
+</script>
+</body>
+</html>

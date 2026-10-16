@@ -1,0 +1,2 @@
+flask>=3.0
+africastalking>=1.2  # optional: only for real SMS via Africa's Talking
