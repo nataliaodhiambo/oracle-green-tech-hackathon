@@ -71,3 +71,20 @@ numpy>=1.21.0
 pandas>=1.3.0
 scikit-learn>=1.0.0
 sentinelhub>=3.4.0
+```
+
+---
+
+## 📱 Farmer USSD/SMS Simulator
+
+`ussd_simulator/` is a Flask app serving an Africa's Talking USSD callback (`POST /ussd`) plus a phone-mockup page. Farmers can check their Green Score, see which actions raise it, see their loan interest discount, and get an SMS summary. Scores come from `data/climate_data.json`.
+
+```bash
+pip install -r ussd_simulator/requirements.txt
+python ussd_simulator/app.py
+# open http://localhost:5000/ and dial *384*2026#
+```
+
+Demo phone numbers map to plots: `+254711000003` is `PLOT_003` (Wanjiru N.). Unregistered numbers are asked for their plot number.
+
+**Africa's Talking sandbox:** expose the app publicly (e.g. `ngrok http 5000`), create a sandbox USSD channel with callback URL `https://<your-url>/ussd`, then dial it from the sandbox simulator. To also send real sandbox SMS, start the app with `AT_USERNAME=sandbox AT_API_KEY=<key>`.
